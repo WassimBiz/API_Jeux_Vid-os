@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Collection de Jeux Vidéo</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            max-width: 900px;
+        }
+        h1 {
+            margin-bottom: 0.2rem;
+        }
+        h2 {
+            margin-top: 2rem;
+        }
+        form, .games-list {
+            border: 1px solid #ccc;
+            padding: 1rem;
+            border-radius: 4px;
+            margin-top: 1rem;
+        }
+        label {
+            display: block;
+            margin-top: 0.5rem;
+        }
+        input[type="text"], input[type="number"] {
+            width: 100%;
+            padding: 0.3rem;
+            margin-top: 0.2rem;
+        }
+        button {
+            margin-top: 1rem;
+            padding: 0.4rem 0.8rem;
+            cursor: pointer;
+        }
+        .game-item {
+            border-bottom: 1px solid #eee;
+            padding: 0.5rem 0;
+        }
+        .game-item:last-child {
+            border-bottom: none;
+        }
+        .badge {
+            display: inline-block;
+            padding: 0.1rem 0.4rem;
+            border-radius: 4px;
+            background: #eee;
+            font-size: 0.8rem;
+            margin-right: 0.2rem;
+        }
+        .favorite {
+            color: #e0a800;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h1>Collection de Jeux Vidéo</h1>
+    <p>Backend FastAPI + MongoDB – petite interface de test.</p>
+
+    <p>
+        <a href="/docs" target="_blank">Ouvrir Swagger</a>
+    </p>
+
+    <h2>Ajouter un jeu</h2>
+    <form id="game-form">
+        <label>
+            Titre :
+            <input type="text" id="titre" required>
+        </label>
+
+        <label>
+            Genres (séparés par des virgules) :
+            <input type="text" id="genre" placeholder="Action, RPG">
+        </label>
+
+        <label>
+            Plateformes (séparées par des virgules) :
+            <input type="text" id="plateforme" placeholder="PC, Nintendo Switch">
+        </label>
+
+        <label>
+            Éditeur :
+            <input type="text" id="editeur">
+        </label>
+
+        <label>
+            Développeur :
+            <input type="text" id="developpeur">
+        </label>
+
+        <label>
+            Année de sortie :
+            <input type="number" id="annee_sortie" min="1970">
+        </label>
+
+        <label>
+            Score Metacritic :
+            <input type="number" id="metacritic_score" min="0" max="100">
+        </label>
+
+        <label>
+            Temps de jeu (heures) :
+            <input type="number" id="temps_jeu_heures" min="0" step="0.1">
+        </label>
+
+        <label>
+            Terminé ?
+            <input type="checkbox" id="termine">
+        </label>
+
+        <button type="submit">Ajouter</button>
+    </form>
+
+    <h2>Jeux enregistrés</h2>
+    <button id="refresh-btn">Rafraîchir</button>
+    <div class="games-list" id="games-list">
+        Chargement...
+    </div>
+
+    <script>
+        const API_BASE = '/api';
+
+        function parseList(value) {
+            if (!value) return [];
+            return value.split(',')
+                .map(v => v.trim())
+                .filter(v => v.length > 0);
+        }
+
+        async function loadGames() {
+            const container = document.getElementById('games-list');
+            container.textContent = 'Chargement...';
+
+            try {
+                const res = await fetch(`${API_BASE}/games`);
+                if (!res.ok) {
+                    container.textContent = 'Erreur lors du chargement des jeux.';
+                    return;
+                }
+                const games = await res.json();
+                if (games.length === 0) {
+                    container.textContent = 'Aucun jeu enregistré.';
+                    return;
+                }
+
+                container.innerHTML = '';
+                games.forEach(game => {
+                    const div = document.createElement('div');
+                    div.className = 'game-item';
+                    div.innerHTML = `
+                        <strong>${game.titre}</strong>
+                        ${game.favori ? '<span class="favorite">★ Favori</span>' : ''}
+                        <br>
+                        <span>Genres : ${(game.genre || []).map(g => '<span class="badge">' + g + '</span>').join(' ')}</span><br>
+                        <span>Plateformes : ${(game.plateforme || []).join(', ')}</span><br>
+                        <small>ID : ${game.id}</small><br>
+                        <button data-id="${game.id}" class="delete-btn">Supprimer</button>
+                        <button data-id="${game.id}" data-fav="${game.favori}" class="fav-btn">
+                            ${game.favori ? 'Retirer des favoris' : 'Mettre en favori'}
+                        </button>
+                    `;
+                    container.appendChild(div);
+                });
+
+                container.querySelectorAll('.delete-btn').forEach(btn => {
+                    btn.addEventListener('click', async () => {
+                        const id = btn.getAttribute('data-id');
+                        if (!confirm('Supprimer ce jeu ?')) return;
+                        await fetch(`${API_BASE}/games/${id}`, { method: 'DELETE' });
+                        loadGames();
+                    });
+                });
+
+                container.querySelectorAll('.fav-btn').forEach(btn => {
+                    btn.addEventListener('click', async () => {
+                        const id = btn.getAttribute('data-id');
+                        const current = btn.getAttribute('data-fav') === 'true';
+                        await fetch(`${API_BASE}/games/${id}/favorite`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ favori: !current })
+                        });
+                        loadGames();
+                    });
+                });
+
+            } catch (err) {
+                console.error(err);
+                container.textContent = 'Erreur réseau.';
+            }
+        }
+
+        document.getElementById('game-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const payload = {
+                titre: document.getElementById('titre').value.trim(),
+                genre: parseList(document.getElementById('genre').value),
+                plateforme: parseList(document.getElementById('plateforme').value),
+                editeur: document.getElementById('editeur').value || null,
+                developpeur: document.getElementById('developpeur').value || null,
+                annee_sortie: document.getElementById('annee_sortie').value
+                    ? Number(document.getElementById('annee_sortie').value)
+                    : null,
+                metacritic_score: document.getElementById('metacritic_score').value
+                    ? Number(document.getElementById('metacritic_score').value)
+                    : null,
+                temps_jeu_heures: document.getElementById('temps_jeu_heures').value
+                    ? Number(document.getElementById('temps_jeu_heures').value)
+                    : null,
+                termine: document.getElementById('termine').checked
+            };
+
+            try {
+                const res = await fetch(`${API_BASE}/games`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    alert('Erreur: ' + JSON.stringify(err));
+                    return;
+                }
+
+                await res.json();
+                document.getElementById('game-form').reset();
+                loadGames();
+            } catch (err) {
+                console.error(err);
+                alert('Erreur réseau.');
+            }
+        });
+
+        document.getElementById('refresh-btn').addEventListener('click', loadGames);
+
+        // Chargement initial
+        loadGames();
+    </script>
+</body>
+</html>
